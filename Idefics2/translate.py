@@ -143,6 +143,10 @@ def translate_text(model, eval_dataset, batch_size, max_new_tokens):
     return generated_texts_unique
 
 
+def filter_output_texts(texts):
+    return [text.strip().replace("\n", "_n ") for text in texts]
+
+
 @click.command()
 @click.option("--model", required=True, help="Model name/path")
 @click.option("--mode", default="text", type=click.Choice(["text", "pixels"]))
@@ -173,14 +177,14 @@ def translate(model, mode, input, output, batch_size, max_new_tokens):
         generated_texts = translate_text(
             model, eval_dataset, batch_size=batch_size, max_new_tokens=max_new_tokens
         )
-        for text in generated_texts:
+        for text in filter_output_texts(generated_texts):
             output.write(text)
     elif mode == "pixels":
         eval_dataset = [{"image": line.strip()} for line in input]
         generated_texts = translate_pixels(
             model, eval_dataset, batch_size=batch_size, max_new_tokens=max_new_tokens
         )
-        for text in generated_texts:
+        for text in filter_output_texts(generated_texts):
             output.write(text)
     else:
         raise ValueError("Invalid mode")
