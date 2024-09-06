@@ -86,9 +86,10 @@ def translate_pixels(model, eval_dataset, batch_size, max_new_tokens):
     generated_texts_unique = []
     for i in tqdm(range(0, len(eval_dataset), batch_size)):
         examples = eval_dataset[i : i + batch_size]
-        images = [[render_image(image_generator, source)] for source in examples]
+        images = []
         texts = []
-        for _ in examples:
+        for source in examples:
+            image = render_image(image_generator, source)
             messages = [
                 {
                     "role": "user",
@@ -103,6 +104,7 @@ def translate_pixels(model, eval_dataset, batch_size, max_new_tokens):
             ]
             text = processor.apply_chat_template(messages, add_generation_prompt=True)
             texts.append(text.strip())
+            images.append([image])
         inputs = processor(
             text=texts, images=images, return_tensors="pt", padding=True
         ).to(DEVICE)
