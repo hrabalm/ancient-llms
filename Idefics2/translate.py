@@ -81,20 +81,15 @@ def load_model(name_or_path, quantize=False):
 
 
 def translate_pixels(model, eval_dataset, batch_size, max_new_tokens):
-    #print("a", flush=True)
     image_generator = load_image_generator()
-    #print("b", flush=True)
 
     generated_texts_unique = []
     for i in tqdm(range(0, len(eval_dataset), batch_size)):
         examples = eval_dataset[i : i + batch_size]
-        #print(examples[0], flush=True)
         images = []
         texts = []
         for source in examples:
-            #print("c", flush=True)
             image = render_image(image_generator, source)
-            #print("d", flush=True)
             messages = [
                 {
                     "role": "user",
@@ -178,8 +173,14 @@ def filter_output_texts(texts):
     default=512,
     help="Max new tokens",
 )
-def translate(model, mode, input, output, batch_size, max_new_tokens):
-    model = load_model(model)
+@click.option(
+    "--quantize",
+    is_flag=True,
+    help="Quantize model",
+    default=False,
+)
+def translate(model, mode, input, output, batch_size, max_new_tokens, quantize):
+    model = load_model(model, quantize=quantize)
     eval_dataset = [line.strip() for line in input]
     if mode == "text":
         generated_texts = translate_text(
