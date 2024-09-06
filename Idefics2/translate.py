@@ -174,14 +174,14 @@ def translate(model, mode, input, output, batch_size, max_new_tokens):
             model, eval_dataset, batch_size=batch_size, max_new_tokens=max_new_tokens
         )
         for text in generated_texts:
-            output.write(text + "\n")
+            output.write(text)
     elif mode == "pixels":
         eval_dataset = [{"image": line.strip()} for line in input]
         generated_texts = translate_pixels(
             model, eval_dataset, batch_size=batch_size, max_new_tokens=max_new_tokens
         )
         for text in generated_texts:
-            output.write(text + "\n")
+            output.write(text)
     else:
         raise ValueError("Invalid mode")
 
