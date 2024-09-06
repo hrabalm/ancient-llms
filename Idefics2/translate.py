@@ -108,7 +108,6 @@ def translate_pixels(model, eval_dataset, batch_size, max_new_tokens):
         inputs = processor(
             text=texts, images=images, return_tensors="pt", padding=True
         ).to(DEVICE)
-        print(inputs)
         generated_ids = model.generate(**inputs, max_new_tokens=max_new_tokens)
         generated_texts = processor.batch_decode(
             generated_ids[:, inputs["input_ids"].size(1) :], skip_special_tokens=True
