@@ -1,64 +1,33 @@
 import torch
-from accelerate import Accelerator
 from peft import LoraConfig
-from transformers import (
-    AutoProcessor,
-    BitsAndBytesConfig,
-    Idefics2ForConditionalGeneration,
-)
+from transformers import AutoProcessor, BitsAndBytesConfig, Idefics2ForConditionalGeneration
 
-accelerator = Accelerator()
-
-device_index = accelerator.process_index
-device_map = {"": device_index}
-
-DEVICE = accelerator.device
+DEVICE = "cuda:0"
 USE_LORA = False
 USE_QLORA = True
 
 
 processor = AutoProcessor.from_pretrained(
-    "HuggingFaceM4/idefics2-8b", do_image_splitting=True
+    "HuggingFaceM4/idefics2-8b",
+    do_image_splitting=False
 )
 
-
-# Three options for training, from the lowest precision training to the highest precision training:
-# - QLora
-# - Standard Lora
-# - Full fine-tuning
-if USE_QLORA or USE_LORA:
-    lora_config = LoraConfig(
-        r=64,
-        lora_alpha=128,
-        lora_dropout=0.1,
-        target_modules=".*(text_model|modality_projection|perceiver_resampler).*(down_proj|gate_proj|up_proj|k_proj|q_proj|v_proj|o_proj).*$",
-        use_dora=False if USE_QLORA else True,
-        init_lora_weights="gaussian",
-    )
-    if USE_QLORA:
-        bnb_config = BitsAndBytesConfig(
+bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-        )
-    model = Idefics2ForConditionalGeneration.from_pretrained(
-        "HuggingFaceM4/idefics2-8b",
-        torch_dtype=torch.bfloat16,
-        quantization_config=bnb_config if USE_QLORA else None,
-    )
-    model.add_adapter(lora_config)
-    model.enable_adapters()
-else:
-    model = Idefics2ForConditionalGeneration.from_pretrained(
-        "HuggingFaceM4/idefics2-8b",
-        torch_dtype=torch.bfloat16,
-        _attn_implementation="flash_attention_2",  # Only available on A100 or H100
-    ).to(DEVICE)
+            bnb_4bit_compute_dtype=torch.bfloat16
+)
 
+model = Idefics2ForConditionalGeneration.from_pretrained(
+        "./model-text-c1/checkpoint-2828",
+        torch_dtype=torch.bfloat16,
+        quantization_config=bnb_config,
+
+)
+ 
 from datasets import load_dataset
 
-train_dataset = load_dataset("hrabalm/mtm24-akkadian-v3", split="train")
-
+train_dataset = load_dataset("hrabalm/mtm24-akkadian-v0", split="train").shuffle(seed=42)
 eval_dataset = load_dataset("hrabalm/mtm24-akkadian-v0", split="test")
 
 """# Training loop
@@ -72,7 +41,6 @@ We first define the data collator which takes list of samples and return input t
 """
 
 import random
-
 
 class MyDataCollator:
     def __init__(self, processor):
@@ -92,30 +60,21 @@ class MyDataCollator:
                 {
                     "role": "user",
                     "content": [
-                        {
-                            "type": "text",
-                            "text": "Translate the text in the image to English.",
-                        },
-                        {"type": "image"},
-                    ],
+                        {"type": "text", "text": f"Translate the text to English.\n###Text:\n{source}"},
+                    ]
                 },
                 {
                     "role": "assistant",
-                    "content": [{"type": "text", "text": translation}],
-                },
+                    "content": [
+                        {"type": "text", "text": translation}
+                    ]
+                }
             ]
             text = processor.apply_chat_template(messages, add_generation_prompt=False)
             texts.append(text.strip())
-            images.append([image])
+            images.append([])
 
-        batch = processor(
-            text=texts,
-            images=images,
-            return_tensors="pt",
-            padding=True,
-            max_length=4096,
-            truncation=True,
-        )
+        batch = processor(text=texts, return_tensors="pt", padding=True)
 
         labels = batch["input_ids"].clone()
         labels[labels == processor.tokenizer.pad_token_id] = self.image_token_id
@@ -123,23 +82,22 @@ class MyDataCollator:
 
         return batch
 
-
 data_collator = MyDataCollator(processor)
 
 """We will use HuggingFace Trainer."""
 
-from transformers import Trainer, TrainingArguments
+from transformers import TrainingArguments, Trainer
 
 training_args = TrainingArguments(
-    num_train_epochs=1,
-    per_device_train_batch_size=1,
+    num_train_epochs=2,
+    per_device_train_batch_size=2,
     per_device_eval_batch_size=1,
-    gradient_accumulation_steps=4,
-    warmup_steps=100,
-    learning_rate=1e-4,
+    gradient_accumulation_steps=16,
+    warmup_steps=50,
+    learning_rate=2e-5,
     weight_decay=0.01,
     logging_steps=1,
-    output_dir="./model_visual_splitting_v4",
+    output_dir="./model-text-c2",
     save_strategy="steps",
     save_steps=100,
     save_total_limit=None,
@@ -149,6 +107,7 @@ training_args = TrainingArguments(
     report_to="wandb",
     optim="adamw_bnb_8bit",
     gradient_checkpointing=True,
+    seed=44,
 )
 
 trainer = Trainer(
@@ -191,16 +150,12 @@ messages = [
         "content": [
             {"type": "text", "text": "Translate the text in the image to English."},
             {"type": "image"},
-            {"type": "text", "text": source},
-        ],
+            {"type": "text", "text": source}
+        ]
     }
 ]
 text = processor.apply_chat_template(messages, add_generation_prompt=True)
-inputs = processor(
-    text=[text.strip()], images=[image], return_tensors="pt", padding=True
-)
+inputs = processor(text=[text.strip()], images=[image], return_tensors="pt", padding=True)
 generated_ids = model.generate(**inputs, max_new_tokens=64)
-generated_texts = processor.batch_decode(
-    generated_ids[:, inputs["input_ids"].size(1) :], skip_special_tokens=True
-)
+generated_texts = processor.batch_decode(generated_ids[:, inputs["input_ids"].size(1):], skip_special_tokens=True)
 print(generated_texts)

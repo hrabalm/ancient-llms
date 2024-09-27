@@ -189,10 +189,10 @@ def translate(model, mode, input, output, batch_size, max_new_tokens, quantize):
         generated_texts = translate_pixels(
             model, eval_dataset, batch_size=batch_size, max_new_tokens=max_new_tokens
         )
-    for text in filter_output_texts(generated_texts):
-        output.write(f"{text}\n")
     else:
         raise ValueError("Invalid mode")
+    for text in filter_output_texts(generated_texts):
+        output.write(f"{text}\n")
 
 
 if __name__ == "__main__":

@@ -45,6 +45,7 @@ if USE_QLORA or USE_LORA:
         "HuggingFaceM4/idefics2-8b",
         torch_dtype=torch.bfloat16,
         quantization_config=bnb_config if USE_QLORA else None,
+        device_map=device_map,
     )
     model.add_adapter(lora_config)
     model.enable_adapters()
@@ -113,7 +114,7 @@ class MyDataCollator:
             images=images,
             return_tensors="pt",
             padding=True,
-            max_length=4096,
+            max_length=756,
             truncation=True,
         )
 
@@ -139,7 +140,7 @@ training_args = TrainingArguments(
     learning_rate=1e-4,
     weight_decay=0.01,
     logging_steps=1,
-    output_dir="./model_visual_splitting_v4",
+    output_dir="./model_visual_splitting_v5",
     save_strategy="steps",
     save_steps=100,
     save_total_limit=None,
